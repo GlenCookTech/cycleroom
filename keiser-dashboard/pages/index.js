@@ -5,7 +5,7 @@ export default function Dashboard() {
   const [bikeData, setBikeData] = useState([]);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws");
+    const ws = new WebSocket("ws://cycle-brain:8888/ws");
 
     ws.onmessage = (event) => {
       const newData = JSON.parse(event.data);

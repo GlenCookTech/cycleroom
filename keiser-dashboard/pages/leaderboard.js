@@ -5,7 +5,7 @@ export default function Leaderboard() {
   const [leaderboard, setLeaderboard] = useState([]);
 
   useEffect(() => {
-    axios.get("http://localhost:8000/leaderboard").then((res) => setLeaderboard(res.data));
+    axios.get("http://localhost:8888/leaderboard").then((res) => setLeaderboard(res.data));
   }, []);
 
   return (

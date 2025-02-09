@@ -5,7 +5,7 @@ export default function Sessions() {
   const [sessions, setSessions] = useState([]);
 
   useEffect(() => {
-    axios.get("http://localhost:8000/sessions").then((res) => setSessions(res.data));
+    axios.get("http://localhost:8888/sessions").then((res) => setSessions(res.data));
   }, []);
 
   return (
