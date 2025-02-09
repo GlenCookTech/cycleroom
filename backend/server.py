@@ -9,7 +9,7 @@ from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 # Load .env file
-load_dotenv(dotenv_path="/opt/cycleroom/backend/.env")
+load_dotenv(dotenv_path="./backend/.env")
 
 # Environment Variables
 INFLUXDB_URL = os.getenv("INFLUXDB_URL")

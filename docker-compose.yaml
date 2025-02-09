@@ -3,18 +3,18 @@ version: '3.8'
 services: 
   backend:
     build:
-      context: /opt/cycleroom/backend  # Path to the build context (where Dockerfile is located)
+      context: ./backend  # Path to the build context (where Dockerfile is located)
       dockerfile: Dockerfile            # Name of the Dockerfile
     image: cycleroom_backend
     ports:
       - "8000:8000"
     env_file:
-      - /opt/cycleroom/backend/.env
+      - ./backend/.env
     depends_on:
       - redis
       - influxdb
     volumes:
-      - /opt/cycleroom/backend:/app
+      - ./backend:/app
     networks:
       - cycleroom_network
 
