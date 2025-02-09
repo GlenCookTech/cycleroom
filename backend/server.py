@@ -6,6 +6,9 @@ from fastapi import FastAPI, WebSocket, HTTPException
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 from dotenv import load_dotenv
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import asyncio
 
 # ✅ Import BLE Scanner & Fake Data Generator
 from fake_data import generate_realistic_data
@@ -95,10 +98,19 @@ async def scan_and_store_data():
 
         await asyncio.sleep(5)  # Scan every 5 seconds
 
-# ✅ Register Startup Event for Background Task
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(scan_and_store_data())
+
+
+# ✅ Use `lifespan` Instead of `@app.on_event("startup")`
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚴‍♂️ Starting BLE Scanner & Fake Data Generator...")
+    asyncio.create_task(scan_and_store_data())  # ✅ Runs BLE scan & fallback fake data
+    yield
+    print("🛑 Shutting Down BLE Scanner...")
+
+# ✅ Initialize FastAPI with `lifespan`
+app = FastAPI(lifespan=lifespan)
+
 
 # ✅ Start FastAPI Server
 if __name__ == "__main__":
