@@ -15,18 +15,27 @@ def parse_ble_data(manufacturer_data):
             return None  # No valid data
 
         # 🔍 Example Data Format (Hex): 0645ff0cc801000006000000001e000001
-        power = int(raw_hex[4:8], 16)  # Convert from Hex to Int
-        cadence = int(raw_hex[8:10], 16)
-        heart_rate = int(raw_hex[10:12], 16)
-        gear = int(raw_hex[12:14], 16)
+        parsed_data = {
+            "Power": int(raw_hex[4:8], 16),
+            "Cadence": int(raw_hex[8:10], 16),
+            "Heart_Rate": int(raw_hex[10:12], 16),
+            "Gear": int(raw_hex[12:14], 16),
+            "Caloric_Burn": int(raw_hex[14:16], 16),
+            "Duration_Minutes": int(raw_hex[16:18], 16),
+            "Duration_Seconds": int(raw_hex[18:20], 16),
+            "Distance": float(int(raw_hex[20:24], 16) / 100.0)  # Convert to float
+        }
 
         return {
             "timestamp": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(),
-            "power": power,
-            "cadence": cadence,
-            "heart_rate": heart_rate,
-            "gear": gear,
-            "calories": round((power * 0.00024), 2),  # Calories estimation
+            "power": parsed_data["Power"],
+            "cadence": parsed_data["Cadence"],
+            "heart_rate": parsed_data["Heart_Rate"],
+            "gear": parsed_data["Gear"],
+            "caloric_burn": parsed_data["Caloric_Burn"],
+            "duration_minutes": parsed_data["Duration_Minutes"],
+            "duration_seconds": parsed_data["Duration_Seconds"],
+            "distance": parsed_data["Distance"]
         }
     except Exception as e:
         print(f"🔥 BLE Parsing Error: {e}")
