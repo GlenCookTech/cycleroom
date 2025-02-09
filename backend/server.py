@@ -14,14 +14,21 @@ import asyncio
 from fake_data import generate_realistic_data
 from ble_listener import scan_keiser_bikes
 
-# ✅ Load environment variables
-load_dotenv()
+# Load .env file
+dotenv_path = "/opt/cycleroom/backend/.env"  # Adjust the path if needed
+load_dotenv(dotenv_path=dotenv_path)
+
 
 # ✅ InfluxDB Configuration
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://127.0.0.1:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your_token")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your_org")
 INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "your_bucket")
+
+print(f"🔍 InfluxDB URL: {INFLUXDB_URL}")
+print(f"🔍 InfluxDB Org: {INFLUXDB_ORG}")
+print(f"🔍 InfluxDB Bucket: {INFLUXDB_BUCKET}")
+print(f"🔍 InfluxDB Token (first 10 chars): {INFLUXDB_TOKEN[:10]}...")
 
 # ✅ Initialize InfluxDB Client
 client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
