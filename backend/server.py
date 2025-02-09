@@ -28,38 +28,52 @@ client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG
 query_api = client.query_api()
 
 
-### ✅ **Optimized InfluxDB Query**
-async def fetch_gear_data():
-    """Fetch max, min, and latest gear values from InfluxDB"""
-    query = f"""
-    gear_data = from(bucket: "{INFLUXDB_BUCKET}")
-      |> range(start: -1h)
-      |> filter(fn: (r) => r["_measurement"] == "gear_data")
-      |> filter(fn: (r) => r["_field"] == "gear")
+# ✅ Store Data in InfluxDB
+@app.post("/sessions")
+def create_session(data: dict):
+    required_keys = ["device", "timestamp", "power", "cadence", "heart_rate", "gear", "calories"]
+    if not all(key in data for key in required_keys):
+        raise HTTPException(status_code=400, detail="Missing required fields")
 
-    max_gear = gear_data |> max()
-    min_gear = gear_data |> min()
-    latest_gear = gear_data |> sort(columns: ["_time"], desc: true) |> limit(n: 1)
+    try:
+        timestamp = datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00")).astimezone(timezone.utc)
 
-    union(tables: [max_gear, min_gear, latest_gear])
-    """
+        point = (
+            Point("keiser_m3")
+            .tag("device", data["device"])
+            .field("power", data["power"])
+            .field("cadence", data["cadence"])
+            .field("heart_rate", data["heart_rate"])
+            .field("gear", data["gear"])
+            .field("calories", data["calories"])
+            .time(timestamp)
+        )
 
-    result = query_api.query(query)
+        write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=point)
 
-    gear_values = {"max": None, "min": None, "current": None}
-    for table in result:
-        for record in table.records:
-            if record.get_field() == "gear":
-                value = record.get_value()
-                if gear_values["max"] is None or value > gear_values["max"]:
-                    gear_values["max"] = value
-                if gear_values["min"] is None or value < gear_values["min"]:
-                    gear_values["min"] = value
-                if gear_values["current"] is None:
-                    gear_values["current"] = value
+    except Exception as e:
+        print(f"🔥 Error Writing to InfluxDB: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return gear_values
+    return {"message": "Session saved successfully", "data": data}
 
+
+# ✅ Function to Scan BLE & Send Data
+async def scan_and_store_data():
+    while True:
+        print("🔍 Scanning for Keiser M3 Bikes...")
+        bikes = await scan_keiser_bikes()
+
+        if bikes:
+            print(f"✅ Found {len(bikes)} bike(s)! Storing real data...")
+            for device, data in bikes.items():
+                data["device"] = device
+                create_session(data)
+        else:
+            print("⚠️ No bikes found. Sending fake data instead...")
+            send_fake_data()
+
+        await asyncio.sleep(5)  # Scan every 5 seconds
 
 ### ✅ **API Endpoint with Caching**
 @app.get("/gear")
@@ -85,6 +99,19 @@ async def health_check():
     return {"status": "ok"}
 
 
-### ✅ **Run Uvicorn with Performance Optimizations**
+# ✅ Use `lifespan` Instead of `@app.on_event("startup")`
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚴‍♂️ Starting BLE Scanner & Fake Data Generator...")
+    asyncio.create_task(scan_and_store_data())  # ✅ Runs BLE scan & fallback fake data
+    yield
+    print("🛑 Shutting Down BLE Scanner...")
+
+# ✅ Initialize FastAPI with `lifespan`
+app = FastAPI(lifespan=lifespan)
+
+
+# ✅ Start FastAPI Server
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, workers=4)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8888)
