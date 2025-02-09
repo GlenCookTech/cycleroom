@@ -1,22 +1,41 @@
 version: '3.8'
 
-services:
+services: 
   backend:
-    build: ./backend/
-    container_name: backend
-    volumes:
-      - shared_data:/data
-      - /var/run/dbus/:/var/run/dbus/:z
-    restart: always
-    privileged: true
+    build:
+      context: /opt/cycleroom/backend  # Path to the build context (where Dockerfile is located)
+      dockerfile: Dockerfile            # Name of the Dockerfile
+    image: cycleroom_backend
     ports:
-      - "8888:8888"
+      - "8000:8000"
+    env_file:
+      - /opt/cycleroom/backend/.env
+    depends_on:
+      - redis
+      - influxdb
+    volumes:
+      - /opt/cycleroom/backend:/app
     networks:
-      - cycle_network
+      - cycleroom_network
 
-volumes:
-  shared_data:
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - cycleroom_network
+
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    networks:
+      - cycleroom_network
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
 
 networks:
-  cycle_network:
-    driver: bridge  
+  cycleroom_network:
+
+volumes:
+  influxdb_data:
