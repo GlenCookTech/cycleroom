@@ -3,10 +3,16 @@ import json
 import redis
 import asyncio
 import uvicorn
+# ✅ Import BLE Scanner & Fake Data Generator
+from fake_data import generate_realistic_data
+from ble_listener import scan_keiser_bikes
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
+from datetime import datetime, timezone  # Ensure this is included
+from contextlib import asynccontextmanager  # Add this line
 
 # Load .env file
 load_dotenv(dotenv_path="./backend/.env")
@@ -25,9 +31,8 @@ redis_client = redis.Redis(host="localhost", port=6379, db=0)
 
 # InfluxDB Client
 client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
+write_api = client.write_api(write_options=SYNCHRONOUS)  # Add this line
 query_api = client.query_api()
-
-
 # ✅ Store Data in InfluxDB
 @app.post("/sessions")
 def create_session(data: dict):
@@ -45,7 +50,10 @@ def create_session(data: dict):
             .field("cadence", data["cadence"])
             .field("heart_rate", data["heart_rate"])
             .field("gear", data["gear"])
-            .field("calories", data["calories"])
+            .field("caloric_burn", data["caloric_burn"])
+            .field("duration_minutes"), data["duration_minutes"]
+            .field("duration_seconds"), data["durations_seconds"]
+            .field("distance"), data["distance"]
             .time(timestamp)
         )
 
@@ -59,6 +67,8 @@ def create_session(data: dict):
 
 
 # ✅ Function to Scan BLE & Send Data
+
+# Update the create_session call in the async function
 async def scan_and_store_data():
     while True:
         print("🔍 Scanning for Keiser M3 Bikes...")
@@ -68,13 +78,12 @@ async def scan_and_store_data():
             print(f"✅ Found {len(bikes)} bike(s)! Storing real data...")
             for device, data in bikes.items():
                 data["device"] = device
-                create_session(data)
+                await asyncio.to_thread(create_session, data)  # Use asyncio.to_thread
         else:
             print("⚠️ No bikes found. Sending fake data instead...")
-            send_fake_data()
+            generate_realistic_data()
 
         await asyncio.sleep(5)  # Scan every 5 seconds
-
 ### ✅ **API Endpoint with Caching**
 @app.get("/gear")
 async def get_gear_data():
@@ -85,12 +94,6 @@ async def get_gear_data():
     cached_data = redis_client.get(cache_key)
     if cached_data:
         return json.loads(cached_data)
-
-    # Fetch from InfluxDB if not in cache
-    gear_data = await fetch_gear_data()
-    redis_client.set(cache_key, json.dumps(gear_data), ex=300)  # Cache for 5 min
-    return gear_data
-
 
 ### ✅ **Health Check for Load Balancers**
 @app.get("/health")
