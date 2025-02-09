@@ -1,0 +1,49 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment folder
+.venv/
+venv/
+
+# Environment variables and credentials
+.env
+.env.local
+config.ini
+secrets.json
+
+# Ignore logs and temp files
+logs/
+*.log
+*.out
+*.pid
+
+# Ignore database files
+*.sqlite3
+*.db
+
+# Ignore IDE and editor settings
+.vscode/
+.idea/
+*.iml
+
+# Ignore InfluxDB backups
+influxdb_backups/
+
+# Ignore generated files and reports
+*.csv
+*.xlsx
+*.json
+
+# Ignore Node.js dependencies (if applicable)
+node_modules/
+
+# Ignore build and deployment files
+dist/
+build/
+
+# Ignore Docker and Kubernetes configs
+*.dockerignore
+k8s/*.yaml
