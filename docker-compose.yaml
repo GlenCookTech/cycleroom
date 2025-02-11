@@ -1,4 +1,3 @@
-version: '3.8'
 
 services: 
   backend:
@@ -11,19 +10,13 @@ services:
     env_file:
       - ./backend/.env
     depends_on:
-      - redis
       - influxdb
     volumes:
       - ./backend:/app
+      - /run/dbus:/run/dbus:ro
     networks:
       - cycleroom_network
-
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    networks:
-      - cycleroom_network
+    privileged: true
 
   influxdb:
     image: influxdb:2.7
@@ -33,9 +26,35 @@ services:
       - cycleroom_network
     volumes:
       - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    env_file:
+      - .env 
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+     - '3000:3000'
+    networks:
+      - cycleroom_network
+    volumes:
+      - grafana_data:/var/lib/grafana
 
+  flask-app:
+    build:
+      context: ./bike-dashboard # Path to the build context (where Dockerfile is located)
+      dockerfile: Dockerfile            # Name of the Dockerfile
+    ports:
+      - "5000:5000"
+    networks:
+      - cycleroom_network
+    volumes:
+      - ./bike-dashboard:/app
 networks:
   cycleroom_network:
 
 volumes:
   influxdb_data:
+  influxdb_config:
+  grafana_data:
+  

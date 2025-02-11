@@ -37,7 +37,7 @@ def parse_ble_data(manufacturer_data):
             "Caloric_Burn": int(raw_hex[24:28], 16),  # Byte 12, 13
             "Duration_Minutes": int(raw_hex[28:30], 16),  # Byte 14
             "Duration_Seconds": int(raw_hex[30:32], 16),  # Byte 15
-            "Distance": float(int(raw_hex[32:36], 16) / 100.0),  # Byte 16, 17 (convert to float)
+            "Distance": int(raw_hex[32:36], 16),  # Byte 16, 17 
             "Gear": int(raw_hex[36:38], 16),  # Byte 18
         }
 
@@ -50,7 +50,8 @@ def parse_ble_data(manufacturer_data):
             "caloric_burn": parsed_data["Caloric_Burn"],
             "duration_minutes": parsed_data["Duration_Minutes"],
             "duration_seconds": parsed_data["Duration_Seconds"],
-            "distance": parsed_data["Distance"]
+            "distance": parsed_data["Distance"],
+            "Equipment_ID": parsed_data["Equipment_ID"] 
         }
 
     except Exception as e:

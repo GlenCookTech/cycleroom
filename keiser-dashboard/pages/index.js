@@ -5,7 +5,7 @@ export default function Dashboard() {
   const [bikeData, setBikeData] = useState([]);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://cycle-brain:8888/ws");
+    const ws = new WebSocket("ws://cycle-brain:8000/ws");
 
     ws.onmessage = (event) => {
       const newData = JSON.parse(event.data);
@@ -18,7 +18,7 @@ export default function Dashboard() {
   return (
     <div style={{ textAlign: "center" }}>
       <h1>Keiser M Series Live Dashboard</h1>
-      <LineChart width={800} height={400} data={bikeData}>
+      <LineChart width={80000} height={400} data={bikeData}>
         <XAxis dataKey="time" />
         <YAxis />
         <CartesianGrid strokeDasharray="3 3" />

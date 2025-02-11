@@ -5,51 +5,58 @@ import asyncio
 import uvicorn
 from fake_data import generate_realistic_data
 from ble_listener import scan_keiser_bikes
-
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 from datetime import datetime, timezone
-from contextlib import asynccontextmanager
 
 # Load environment variables
-load_dotenv(dotenv_path="./backend/.env")
+load_dotenv()
+INFLUX_HOST = os.getenv("INFLUX_HOST")
+INFLUX_TOKEN = os.getenv("INFLUX_TOKEN")
+INFLUX_ORG = os.getenv("INFLUX_ORG")
+INFLUX_BUCKET = os.getenv("INFLUX_BUCKET")
 
-# Debugging: Print InfluxDB Variables
-INFLUXDB_URL = os.getenv("INFLUXDB_URL")
-INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
-INFLUXDB_ORG = os.getenv("INFLUXDB_ORG")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
-
-if not INFLUXDB_URL or not INFLUXDB_TOKEN or not INFLUXDB_ORG:
+if not INFLUX_HOST or not INFLUX_TOKEN or not INFLUX_ORG:
     raise ValueError("🚨 InfluxDB environment variables are missing! Check .env file.")
 
-# Initialize FastAPI **(Only one instance!)**
+# Initialize FastAPI
 app = FastAPI()
 
-# Initialize Redis
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
+# Configure CORS to allow WebSocket connections from Grafana
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change this to specific domains if needed
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize InfluxDB
-client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
+client = InfluxDBClient(url=INFLUX_HOST, token=INFLUX_TOKEN, org=INFLUX_ORG)
 write_api = client.write_api(write_options=SYNCHRONOUS)
+query_api = client.query_api()
 
-# ✅ Fix: `/sessions` Route (Honor Original Timestamp)
+# WebSocket connections storage
+active_connections = {}
+
+# ✅ Store session data in InfluxDB
 @app.post("/sessions")
-def create_session(data: dict):
-    required_keys = ["device", "timestamp", "power", "cadence", "heart_rate", "gear", "caloric_burn", "duration_minutes", "duration_seconds", "distance"]
+async def create_session(data: dict):
+    required_keys = ["equipment_id", "timestamp", "power", "gear", "distance", "cadence", "heart_rate", "caloric_burn", "duration_minutes", "duration_seconds"]
     if not all(key in data for key in required_keys):
         raise HTTPException(status_code=400, detail="Missing required fields")
 
     try:
-        # ✅ Convert original timestamp from JSON input
+        # ✅ Convert timestamp from JSON input
         timestamp = datetime.fromisoformat(data["timestamp"]).replace(tzinfo=timezone.utc)
 
-        # ✅ Create InfluxDB data point (Correct chaining)
+        # ✅ Create InfluxDB data point
         point = (
             Point("keiser_m3")
-            .tag("device", data["device"])
+            .tag("equipment_id", str(data["equipment_id"]))  # Ensure it's a string for InfluxDB
             .field("power", int(data["power"]))
             .field("cadence", int(data["cadence"]))
             .field("heart_rate", int(data["heart_rate"]))
@@ -57,13 +64,15 @@ def create_session(data: dict):
             .field("caloric_burn", int(data["caloric_burn"]))  # 🔥 Ensure this is an integer
             .field("duration_minutes", int(data["duration_minutes"]))
             .field("duration_seconds", int(data["duration_seconds"]))
-            .field("distance", float(data["distance"]))
-            .time(timestamp)
+            .field("distance", int(data["distance"]))
+            .time(datetime.utcnow().replace(tzinfo=timezone.utc)) 
         )
 
-
         # ✅ Write to InfluxDB
-        write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=point)
+        write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
+
+        # ✅ Broadcast new data to WebSocket clients
+        await broadcast_ws(data)
 
     except Exception as e:
         print(f"🔥 Error Writing to InfluxDB: {e}")
@@ -71,39 +80,42 @@ def create_session(data: dict):
 
     return {"message": "Session saved successfully", "data": data}
 
-# ✅ Function to Scan BLE & Send Data
-async def scan_and_store_data():
-    while True:
-        print("🔍 Scanning for Keiser M3 Bikes...")
-        bikes = await scan_keiser_bikes()
+# ✅ WebSocket Endpoint for Real-Time Streaming per Equipment
+@app.websocket("/ws/{equipment_id}")
+async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
+    await websocket.accept()
+    if equipment_id not in active_connections:
+        active_connections[equipment_id] = set()
+    active_connections[equipment_id].add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # Keep connection alive
+    except WebSocketDisconnect:
+        active_connections[equipment_id].remove(websocket)
+        if not active_connections[equipment_id]:
+            del active_connections[equipment_id]
 
-        if bikes:
-            print(f"✅ Found {len(bikes)} bike(s)! Storing real data...")
-            for device, data in bikes.items():
-                data["device"] = device
-                await asyncio.to_thread(create_session, data)
-        else:
-            print("⚠️ No bikes found. Sending fake data instead...")
-            generate_realistic_data()
+# ✅ Broadcast updates to WebSocket clients per Equipment
+async def broadcast_ws(data):
+    equipment_id = str(data["equipment_id"])  # ✅ Fix mismatch
+    message = {
+        "power": data["power"],
+        "gear": data["gear"],
+        "distance": data["distance"],
+        "cadence": data["cadence"],
+        "heart_rate": data["heart_rate"],
+        "caloric_burn": data["caloric_burn"],
+        "timestamp": data["timestamp"]
+    }
+    if equipment_id in active_connections:
+        for websocket in active_connections[equipment_id]:
+            await websocket.send_json(message)
 
-        await asyncio.sleep(5)
-
-# ✅ Health Check
+# ✅ Health Check Endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
-# ✅ Use `lifespan` Correctly (No Duplicate `app`)
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("🚴‍♂️ Starting BLE Scanner & Fake Data Generator...")
-    asyncio.create_task(scan_and_store_data())
-    yield
-    print("🛑 Shutting Down BLE Scanner...")
-
-# ✅ Assign lifespan to existing app instance
-app.router.lifespan_context = lifespan
-
 # ✅ Start FastAPI Server
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8888, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

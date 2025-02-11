@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cycle Room Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <div class="max-w-6xl mx-auto mt-10">
+        <h1 class="text-3xl font-bold text-center mb-6">Cycle Room Dashboard</h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="p-6 bg-gray-800 rounded-lg shadow-lg">
+                <canvas id="barGauge"></canvas>
+            </div>
+            <div class="p-6 bg-gray-800 rounded-lg shadow-lg">
+                <canvas id="timeSeries"></canvas>
+            </div>
+            <div class="p-6 bg-gray-800 rounded-lg shadow-lg">
+                <canvas id="gaugeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchData(url) {
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        // Bar Gauge - Total Power Output
+        async function loadBarGauge() {
+            const data = await fetchData("/api/total-power");
+            const ctx = document.getElementById("barGauge").getContext("2d");
+            new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: data.map(d => d.equipment_id),
+                    datasets: [{
+                        label: "Total Power (Watts)",
+                        data: data.map(d => d.value),
+                        backgroundColor: ["#3b82f6", "#ef4444", "#f59e0b"]
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Time Series - Distance
+        async function loadTimeSeries() {
+            const data = await fetchData("/api/distance");
+            const ctx = document.getElementById("timeSeries").getContext("2d");
+            new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: data.map(d => new Date(d.time).toLocaleTimeString()),
+                    datasets: [{
+                        label: "Distance (km)",
+                        data: data.map(d => d.value),
+                        borderColor: "#22c55e",
+                        fill: false
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Gauge - Current Gear
+        async function loadGaugeChart() {
+            const data = await fetchData("/api/gear");
+            const ctx = document.getElementById("gaugeChart").getContext("2d");
+            new Chart(ctx, {
+                type: "doughnut",
+                data: {
+                    labels: ["Current Gear", "Remaining"],
+                    datasets: [{
+                        data: [data.value, 25 - data.value],
+                        backgroundColor: ["#ef4444", "#1e293b"]
+                    }]
+                },
+                options: {
+                    circumference: Math.PI,
+                    rotation: -Math.PI,
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        // Load all charts
+        loadBarGauge();
+        loadTimeSeries();
+        loadGaugeChart();
+    </script>
+
+</body>
+</html>
