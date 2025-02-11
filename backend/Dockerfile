@@ -1,5 +1,9 @@
 # Use Python as base image
+<<<<<<< HEAD
 FROM python:3.11
+=======
+FROM python:3.13
+>>>>>>> bea859356d9632741ca0cd9632c615fc28a88c7b
 
 # Set working directory inside the container
 WORKDIR /app
