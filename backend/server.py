@@ -3,6 +3,7 @@ import json
 import asyncio
 import uvicorn
 import psycopg2
+import logging
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -110,18 +111,20 @@ async def continuous_ble_scanner():
 
 # ✅ Store Parsed Data in TimescaleDB & InfluxDB
 async def store_bike_data(data):
+    """Stores bike data in TimescaleDB & InfluxDB."""
     try:
-        timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
-
-        # ✅ Extract Data Fields
-        equipment_id = str(data["equipment_id"])
-        power = int(data["power"])
-        cadence = float(data["cadence"]) / 10.0  # Convert 0.1 RPM to RPM
-        heart_rate = int(data["heart_rate"])
-        gear = int(data["gear"])
-        caloric_burn = int(data["caloric_burn"])
+        timestamp = data.get("timestamp", datetime.utcnow().replace(tzinfo=timezone.utc).isoformat())
+        equipment_id = str(data.get("equipment_id", "unknown"))
+        power = int(data.get("power", 0))
+        cadence = float(data.get("cadence", 0))  # Convert 0.1 RPM to RPM
+        heart_rate = int(data.get("heart_rate", 0))
+        gear = int(data.get("gear", 0))
+        caloric_burn = int(data.get("caloric_burn", 0))
         duration = int(data.get("duration", 0))
-        distance = float(data["trip_distance"])  # Ensure proper distance handling
+        distance = float(data.get("trip_distance", 0))  # ✅ Use `trip_distance` as fallback for `distance`
+
+        # ✅ Log the parsed data for debugging
+        logging.info(f"📝 Storing Data: {json.dumps(data, indent=2)}")
 
         # ✅ Insert into TimescaleDB
         with get_db_connection() as conn:
@@ -132,6 +135,8 @@ async def store_bike_data(data):
                 """
                 values = (timestamp, equipment_id, power, cadence, heart_rate, gear, caloric_burn, duration, distance)
                 cursor.execute(query, values)
+                conn.commit()
+                logging.info(f"✅ Data inserted into TimescaleDB for {equipment_id}")
 
         # ✅ Insert into InfluxDB
         with InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG) as client:
@@ -147,17 +152,126 @@ async def store_bike_data(data):
                 .field("distance", distance) \
                 .time(timestamp, WritePrecision.NS)
             write_api.write(bucket=INFLUXDB_BUCKET, record=point)
-
-        print(f"✅ Stored bike data: {data}")
-        await broadcast_ws(data)
+            logging.info(f"✅ Data inserted into InfluxDB for {equipment_id}")
 
     except Exception as e:
-        print(f"🔥 Error Writing to Databases: {e}")
+        logging.error(f"🔥 Error Writing to Databases: {e}")
+
+app = FastAPI()
+
+@app.post("/sessions")
+async def create_session(data: dict):
+    """Receives session data and stores it using `store_bike_data()`."""
+    logging.info(f"📥 Incoming Session Data: {data}")
+
+    if not data:
+        raise HTTPException(status_code=400, detail="No data received")
+
+    try:
+        # ✅ Call `store_bike_data` to handle data storage
+        asyncio.create_task(store_bike_data(data))  # Run in background
+
+        return {"message": "Session saved successfully", "data": data}
+
+    except Exception as e:
+        logging.error(f"🔥 Error storing data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+# ✅ Grafana API Configuration
+GRAFANA_URL = "http://localhost:3000/api/annotations"
+GRAFANA_API_KEY = "your-grafana-api-key"  # 🔹 Replace with your real API key
+
+# ✅ Connect to PostgreSQL
+def get_db_connection():
+    return psycopg2.connect(
+        host=TIMESCALE_HOST,
+        database=TIMESCALE_DB,
+        user=TIMESCALE_USER,
+        password=TIMESCALE_PASSWORD,
+        port=TIMESCALE_PORT
+    )
+
+# ✅ Create the `bike_selections` Table (If Not Exists)
+def create_bike_table():
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bike_selections (
+                    id SERIAL PRIMARY KEY,
+                    user_name TEXT NOT NULL,
+                    equipment_id INT NOT NULL,
+                    timestamp TIMESTAMPTZ DEFAULT now()
+                );
+            """)
+            conn.commit()
+
+create_bike_table()  # 🔹 Ensure table exists at startup
+
+# ✅ Store Bike Selection
+@app.post("/update_grafana")
+async def update_grafana(data: dict):
+    """Updates PostgreSQL & Grafana with the selected bike info."""
+    user_name = data.get("user_name")
+    equipment_id = data.get("equipment_id")
+
+    if not user_name or not equipment_id:
+        raise HTTPException(status_code=400, detail="Missing user_name or equipment_id")
+
+    try:
+        # ✅ Insert into PostgreSQL
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO bike_selections (user_name, equipment_id) VALUES (%s, %s);",
+                    (user_name, equipment_id)
+                )
+                conn.commit()
+
+        logging.info(f"✅ Stored {user_name} on Bike {equipment_id} in PostgreSQL")
+
+        # ✅ Send Update to Grafana
+        grafana_data = {
+            "text": f"🚴‍♂️ {user_name} is now on Bike {equipment_id}",
+            "tags": ["bike_selection"],
+        }
+
+        headers = {"Authorization": f"Bearer {GRAFANA_API_KEY}", "Content-Type": "application/json"}
+        response = requests.post(GRAFANA_URL, json=grafana_data, headers=headers)
+
+        if response.status_code == 200:
+            return {"message": "Bike selection updated in PostgreSQL & Grafana"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update Grafana")
+
+    except Exception as e:
+        logging.error(f"🔥 Error storing bike selection: {e}")
+        raise HTTPException(status_code=500, detail="Database error")
+
+# ✅ Retrieve All Stored Bike Selections
+@app.get("/selections")
+async def get_selections():
+    """Fetches all bike selections from PostgreSQL."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT user_name, equipment_id, timestamp FROM bike_selections ORDER BY timestamp DESC;")
+                rows = cursor.fetchall()
+
+        return [{"user_name": row[0], "equipment_id": row[1], "timestamp": row[2]} for row in rows]
+
+    except Exception as e:
+        logging.error(f"🔥 Error fetching selections: {e}")
+        raise HTTPException(status_code=500, detail="Database error")
+
+
 
 # ✅ Health Check Endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+    
 
 # ✅ Start FastAPI Server & Background Scanner
 if __name__ == "__main__":
