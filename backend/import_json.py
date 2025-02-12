@@ -3,7 +3,8 @@ import requests
 import time
 import multiprocessing
 from collections import defaultdict
-from ble_listener import parse_ble_data
+from keiser_m3_ble_parser import KeiserM3BLEBroadcast # ✅ Import the parser function
+
 
 # Load JSON data from file
 json_file = "filtered_output.json"
@@ -36,7 +37,7 @@ for record in bluetooth_records:
         manufacturer_data = {0x0645: bytes.fromhex(manufacturer_data_hex)}
 
         # Parse the manufacturer data
-        parsed_data = parse_ble_data(manufacturer_data)
+        parsed_data = KeiserM3BLEBroadcast(manufacturer_data)
 
         if parsed_data and "duration_minutes" in parsed_data and "duration_seconds" in parsed_data and "Equipment_ID" in parsed_data:
             parsed_data["total_duration"] = (parsed_data["duration_minutes"] * 60) + parsed_data["duration_seconds"]

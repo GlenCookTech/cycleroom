@@ -51,16 +51,6 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
 
-  flask-app:
-    build:
-      context: ./bike-dashboard # Path to the build context (where Dockerfile is located)
-      dockerfile: Dockerfile            # Name of the Dockerfile
-    ports:
-      - "5000:5000"
-    networks:
-      - cycleroom_network
-    volumes:
-      - ./bike-dashboard:/app
 networks:
   cycleroom_network:
 

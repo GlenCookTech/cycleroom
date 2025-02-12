@@ -3,14 +3,15 @@ import json
 import asyncio
 import uvicorn
 import psycopg2
-from fake_data import generate_realistic_data
-from ble_listener import scan_keiser_bikes
+from influxdb_client import InfluxDBClient, Point, WritePrecision
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
+from bleak import BleakScanner
+from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Improved BLE Parser
 
-# Load environment variables
+# ✅ Load environment variables
 load_dotenv()
 TIMESCALE_HOST = os.getenv("TIMESCALE_HOST", "localhost")
 TIMESCALE_DB = os.getenv("TIMESCALE_DB", "cycleroom")
@@ -18,7 +19,16 @@ TIMESCALE_USER = os.getenv("TIMESCALE_USER", "postgres")
 TIMESCALE_PASSWORD = os.getenv("TIMESCALE_PASSWORD", "password")
 TIMESCALE_PORT = os.getenv("TIMESCALE_PORT", "5432")
 
-# Connect to TimescaleDB
+# ✅ InfluxDB Configuration
+INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
+INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "your-bucket")
+
+# ✅ WebSocket connections storage
+active_connections = {}
+
+# ✅ Connect to TimescaleDB
 def get_db_connection():
     conn = psycopg2.connect(
         host=TIMESCALE_HOST,
@@ -29,18 +39,11 @@ def get_db_connection():
     )
     conn.autocommit = True  # Force commit to database
     return conn
-    return psycopg2.connect(
-        host=TIMESCALE_HOST,
-        database=TIMESCALE_DB,
-        user=TIMESCALE_USER,
-        password=TIMESCALE_PASSWORD,
-        port=TIMESCALE_PORT
-    )
 
-# Initialize FastAPI
+# ✅ Initialize FastAPI
 app = FastAPI()
 
-# Configure CORS to allow WebSocket connections from Grafana
+# ✅ Configure CORS to allow WebSocket connections from Grafana
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,96 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# WebSocket connections storage
-active_connections = {}
-
-# Create Table for TimescaleDB
-def create_timescale_table():
-    with get_db_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS keiser_m3 (
-                    time TIMESTAMPTZ NOT NULL,
-                    equipment_id TEXT,
-                    power INT,
-                    cadence INT,
-                    heart_rate INT,
-                    gear INT,
-                    caloric_burn INT,
-                    duration_minutes INT,
-                    duration_seconds INT,
-                    distance INT
-                );
-            """)
-            cursor.execute("SELECT create_hypertable('keiser_m3', 'time', if_not_exists => TRUE);")
-            conn.commit()
-create_timescale_table()
-
-# Store session data in TimescaleDB
-@app.post("/sessions")
-async def create_session(data: dict):
-    print("📥 Incoming request data:", json.dumps(data, indent=2))  # Log incoming request
-
-    required_keys = ["equipment_id", "timestamp", "power", "gear", "distance", "cadence", "heart_rate", "caloric_burn", "duration_minutes", "duration_seconds"]
-    if not all(key in data for key in required_keys):
-        raise HTTPException(status_code=400, detail="Missing required fields")
-
-    try:
-        timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
-        
-        # Explicitly cast values to match TimescaleDB column types
-        equipment_id = str(data["equipment_id"])
-        power = int(data["power"])
-        cadence = int(data["cadence"])
-        heart_rate = int(data["heart_rate"])
-        gear = int(data["gear"])
-        caloric_burn = int(data["caloric_burn"])
-        duration_minutes = int(data["duration_minutes"])
-        duration_seconds = int(data["duration_seconds"])
-        distance = int(data["distance"])
-        
-        with get_db_connection() as conn:
-            with conn.cursor() as cursor:
-                query = (
-                    "INSERT INTO keiser_m3 (time, equipment_id, power, cadence, heart_rate, gear, caloric_burn, "
-                    "duration_minutes, duration_seconds, distance) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"
-                )
-                values = (timestamp, equipment_id, power, cadence, heart_rate, gear, caloric_burn, duration_minutes, duration_seconds, distance)
-                
-                print("🔹 Preparing to execute query:")
-                print("   Query:", query)
-                print("   Values:", values)
-                print("   Value types:", [type(v) for v in values])
-                
-                try:
-                    cursor.execute(query, values)
-                    conn.commit()
-                    print("✅ Insert committed successfully.")
-                    
-                    # Check if row was inserted
-                    if cursor.rowcount == 0:
-                        print("⚠️ No rows were inserted! Rolling back.")
-                        conn.rollback()
-                    else:
-                        print(f"✅ {cursor.rowcount} row(s) inserted.")
-                    
-                    # Verify data was inserted
-                    cursor.execute("SELECT * FROM keiser_m3 ORDER BY time DESC LIMIT 1;")
-                    inserted_data = cursor.fetchone()
-                    print(f"🔍 Last inserted row: {inserted_data}")
-                except psycopg2.Error as db_error:
-                    conn.rollback()
-                    print(f"🔥 SQL Execution Error: {db_error.pgcode} - {db_error.pgerror}")
-                    raise HTTPException(status_code=500, detail=f"SQL Error: {db_error.pgcode} - {db_error.pgerror}")
-
-        await broadcast_ws(data)
-    except Exception as e:
-        print(f"🔥 General Error Writing to TimescaleDB: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return {"message": "Session saved successfully", "data": data}
-
-# WebSocket Endpoint for Real-Time Streaming per Equipment
+# ✅ WebSocket Endpoint for Real-Time Streaming per Equipment
 @app.websocket("/ws/{equipment_id}")
 async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
     await websocket.accept()
@@ -149,11 +63,12 @@ async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        active_connections[equipment_id].remove(websocket)
-        if not active_connections[equipment_id]:
-            del active_connections[equipment_id]
+        if equipment_id in active_connections and websocket in active_connections[equipment_id]:
+            active_connections[equipment_id].remove(websocket)
+            if not active_connections[equipment_id]:  # Cleanup empty connection lists
+                del active_connections[equipment_id]
 
-# Broadcast updates to WebSocket clients per Equipment
+# ✅ Broadcast updates to WebSocket clients per Equipment
 async def broadcast_ws(data):
     equipment_id = str(data["equipment_id"])
     message = {
@@ -169,11 +84,83 @@ async def broadcast_ws(data):
         for websocket in active_connections[equipment_id]:
             await websocket.send_json(message)
 
-# Health Check Endpoint
+# ✅ BLE Detection & Parsing Loop
+async def continuous_ble_scanner():
+    """Continuously scans for Keiser M3 bikes and processes BLE data."""
+    TARGET_PREFIX = "M3"
+
+    def detection_callback(device, advertisement_data):
+        if device.name and device.name.startswith(TARGET_PREFIX):
+            try:
+                parsed_data = KeiserM3BLEBroadcast(advertisement_data.manufacturer_data[0x0645]).to_dict()
+
+                # ✅ Store Data in TimescaleDB & InfluxDB
+                asyncio.create_task(store_bike_data(parsed_data))
+            except Exception as e:
+                print(f"⚠️ Error parsing BLE data from {device.name}: {e}")
+
+    scanner = BleakScanner(detection_callback)
+
+    while True:
+        print("🔍 Scanning for Keiser M3 bikes...")
+        await scanner.start()
+        await asyncio.sleep(10)  # Scan duration (10 seconds)
+        await scanner.stop()
+        print("🔍 Scan cycle completed. Restarting...")
+
+# ✅ Store Parsed Data in TimescaleDB & InfluxDB
+async def store_bike_data(data):
+    try:
+        timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+        # ✅ Extract Data Fields
+        equipment_id = str(data["equipment_id"])
+        power = int(data["power"])
+        cadence = float(data["cadence"]) / 10.0  # Convert 0.1 RPM to RPM
+        heart_rate = int(data["heart_rate"])
+        gear = int(data["gear"])
+        caloric_burn = int(data["caloric_burn"])
+        duration = int(data.get("duration", 0))
+        distance = float(data["trip_distance"])  # Ensure proper distance handling
+
+        # ✅ Insert into TimescaleDB
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                query = """
+                    INSERT INTO keiser_m3 (time, equipment_id, power, cadence, heart_rate, gear, caloric_burn, duration, distance)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """
+                values = (timestamp, equipment_id, power, cadence, heart_rate, gear, caloric_burn, duration, distance)
+                cursor.execute(query, values)
+
+        # ✅ Insert into InfluxDB
+        with InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG) as client:
+            write_api = client.write_api()
+            point = Point("keiser_m3") \
+                .tag("equipment_id", equipment_id) \
+                .field("power", power) \
+                .field("cadence", cadence) \
+                .field("heart_rate", heart_rate) \
+                .field("gear", gear) \
+                .field("caloric_burn", caloric_burn) \
+                .field("duration", duration) \
+                .field("distance", distance) \
+                .time(timestamp, WritePrecision.NS)
+            write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+
+        print(f"✅ Stored bike data: {data}")
+        await broadcast_ws(data)
+
+    except Exception as e:
+        print(f"🔥 Error Writing to Databases: {e}")
+
+# ✅ Health Check Endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
-# Start FastAPI Server
+# ✅ Start FastAPI Server & Background Scanner
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.create_task(continuous_ble_scanner())  # ✅ Run BLE scanner in the background
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
