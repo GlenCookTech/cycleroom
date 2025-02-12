@@ -18,6 +18,17 @@ services:
       - cycleroom_network
     privileged: true
 
+  timescaledb:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      - POSTGRES_PASSWORD=GlenCookTech
+    ports:
+      - "5432:5432"
+    networks:
+      - cycleroom_network
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+
   influxdb:
     image: influxdb:2.7
     ports:
@@ -57,4 +68,5 @@ volumes:
   influxdb_data:
   influxdb_config:
   grafana_data:
+  timescaledb_data:
   
