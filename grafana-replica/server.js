@@ -3,7 +3,7 @@ const cors = require("cors");
 const { InfluxDB } = require("@influxdata/influxdb-client");
 
 const app = express();
-const PORT = 3000;
+const PORT = 9999;
 
 // InfluxDB Configuration
 const INFLUX_URL = "http://cycle-brain:8086";
