@@ -4,17 +4,15 @@ FROM node:18-alpine
 # Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package.json package-lock.json ./
-
-# Install dependencies
+# Copy package.json and install dependencies
+COPY package.json ./
 RUN npm install
 
-# Copy the entire project
+# Copy the rest of the application
 COPY . .
 
-# Expose port 3000 for the React app
-EXPOSE 3030
+# Expose port 3000
+EXPOSE 3000
 
 # Start the React app
 CMD ["npm", "start"]
