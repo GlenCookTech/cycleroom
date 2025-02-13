@@ -271,10 +271,58 @@ async def get_selections():
 async def health_check():
     return {"status": "ok"}
 
+from fastapi import FastAPI
+import asyncio
+import logging
+
+app = FastAPI()
+
+# Background task reference
+ble_scanner_task = None
+
+async def continuous_ble_scanner():
+    """Continuously scans for Keiser M3 bikes and processes BLE data."""
+    from bleak import BleakScanner
+    from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # Ensure this is available
+
+    TARGET_PREFIX = "M3"
+
+    def detection_callback(device, advertisement_data):
+        if device.name and device.name.startswith(TARGET_PREFIX):
+            try:
+                parsed_data = KeiserM3BLEBroadcast(advertisement_data.manufacturer_data[0x0645]).to_dict()
+                asyncio.create_task(store_bike_data(parsed_data))
+            except Exception as e:
+                logging.error(f"⚠️ Error parsing BLE data from {device.name}: {e}")
+
+    scanner = BleakScanner(detection_callback)
+
+    while True:
+        logging.info("🔍 Scanning for Keiser M3 bikes...")
+        await scanner.start()
+        await asyncio.sleep(10)  # Scan duration (10 seconds)
+        await scanner.stop()
+        logging.info("🔍 Scan cycle completed. Restarting...")
+
+@app.on_event("startup")
+async def start_ble_scanner():
+    """ Start BLE scanner when FastAPI starts """
+    global ble_scanner_task
+    ble_scanner_task = asyncio.create_task(continuous_ble_scanner())
+
+@app.on_event("shutdown")
+async def stop_ble_scanner():
+    """ Stop BLE scanner when FastAPI shuts down """
+    global ble_scanner_task
+    if ble_scanner_task:
+        ble_scanner_task.cancel()
+        try:
+            await ble_scanner_task
+        except asyncio.CancelledError:
+            logging.info("🚦 BLE scanner task cancelled cleanly.")
     
 
 # ✅ Start FastAPI Server & Background Scanner
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(continuous_ble_scanner())  # ✅ Run BLE scanner in the background
+    loop = asyncio.get_event_loop
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
