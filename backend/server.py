@@ -309,11 +309,7 @@ async def start_ble_scanner():
     """ Start BLE scanner when FastAPI starts """
     global ble_scanner_task
     ble_scanner_task = asyncio.create_task(continuous_ble_scanner())
-
-@app.on_event("shutdown")
-async def stop_ble_scanner():
-    """ Stop BLE scanner when FastAPI shuts down """
-    global ble_scanner_task
+    yield
     if ble_scanner_task:
         ble_scanner_task.cancel()
         try:
