@@ -4,7 +4,7 @@ import time
 from ble_listener import parse_ble_data
 
 # Load JSON data from file
-json_file = "filtered_output.json"
+json_file = "../utils/filtered_output.json"
 
 with open(json_file, "r") as file:
     data = json.load(file)
