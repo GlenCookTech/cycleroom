@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from bleak import BleakScanner
 from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Improved BLE Parser
 
+
 # ✅ Load environment variables
 load_dotenv()
 TIMESCALE_HOST = os.getenv("TIMESCALE_HOST", "localhost")
@@ -25,6 +26,11 @@ INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
 INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "your-bucket")
+# ✅ Grafana API Configuration
+
+GRAFANA_URL = os.getenv("GRAFANA_URL", "http://localhost:3000/api/annotations")
+GRAFANA_API_KEY = os.getenv("GRAFANA_API_KEY", "your-api-key")
+
 
 # ✅ WebSocket connections storage
 active_connections = {}
@@ -177,11 +183,6 @@ async def create_session(data: dict):
         logging.error(f"🔥 Error storing data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-
-# ✅ Grafana API Configuration
-GRAFANA_URL = "http://localhost:3000/api/annotations"
-GRAFANA_API_KEY = "your-grafana-api-key"  # 🔹 Replace with your real API key
-
 # ✅ Connect to PostgreSQL
 def get_db_connection():
     return psycopg2.connect(
