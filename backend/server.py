@@ -4,6 +4,7 @@ import asyncio
 import uvicorn
 import psycopg2
 import logging
+import requests
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
