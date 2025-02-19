@@ -4,7 +4,7 @@ import time
 from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Import the new parser
 
 # Load JSON data from file
-json_file = "../utils/filtered_output.json"
+json_file = "./utils/filtered_output.json"
 
 with open(json_file, "r") as file:
     data = json.load(file)

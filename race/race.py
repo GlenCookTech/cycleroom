@@ -1,0 +1,123 @@
+import pygame
+import os
+import json
+import cv2
+import numpy as np
+import math
+from dotenv import load_dotenv
+from influxdb_client import InfluxDBClient
+from flask import Flask, Response
+
+# Initialize Pygame
+pygame.init()
+
+# Load environment variables
+load_dotenv()
+INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
+INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "keiser_data")
+
+# Init InfluxDB
+client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
+query_api = client.query_api()
+
+# Screen settings
+SCREEN_WIDTH, SCREEN_HEIGHT = 1200, 600
+TRACK_WIDTH = 800
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Bike Race Visualization")
+
+# Load the track image
+try:
+    TRACK_IMAGE = pygame.image.load("race/track.jpg")
+    TRACK_IMAGE = pygame.transform.scale(TRACK_IMAGE, (TRACK_WIDTH, SCREEN_HEIGHT))
+except pygame.error as e:
+    print(f"❌ Error loading track image: {e}")
+    TRACK_IMAGE = None
+
+# Load waypoints
+WAYPOINTS_FILE = "race/waypoints.json"
+try:
+    with open(WAYPOINTS_FILE, "r") as f:
+        WAYPOINTS = [(x, y) for x, y in json.load(f)]
+    print(f"✅ Loaded {len(WAYPOINTS)} waypoints.")
+except FileNotFoundError:
+    print("❌ Waypoints file not found!")
+    WAYPOINTS = []
+
+# Load bike icon
+BIKE_ICON = pygame.image.load("race/bike_icon.png")
+BIKE_ICON = pygame.transform.scale(BIKE_ICON, (20, 10))
+
+# Colors
+BIKE_COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 165, 0)]
+FONT = pygame.font.Font(None, 24)
+
+# Get bike position based on distance
+def get_bike_position(distance_miles):
+    if not WAYPOINTS:
+        return (0, 0)
+    
+    track_length_miles = 3.0  
+    distance_pixels = (distance_miles / track_length_miles) * len(WAYPOINTS)
+    index = int(distance_pixels) % len(WAYPOINTS)
+    
+    if index < 0 or index >= len(WAYPOINTS):
+        return (0, 0)
+
+    return WAYPOINTS[index]
+
+# Fetch race data (distance, gear, power)
+def get_race_data():
+    query = f'''
+        from(bucket: "{INFLUXDB_BUCKET}")
+            |> range(start: -30s)
+            |> filter(fn: (r) => r["_measurement"] == "keiser_m3")
+            |> filter(fn: (r) => r["_field"] == "distance" or r["_field"] == "gear" or r["_field"] == "power")
+            |> last()
+    '''
+    tables = query_api.query(query)
+    
+    bike_data = {}
+    
+    for table in tables:
+        for record in table.records:
+            equipment_id = record.values.get("equipment_id", f"bike_{len(bike_data)}")
+            field = record.values["_field"]
+            value = record.get_value()
+            
+            if equipment_id not in bike_data:
+                bike_data[equipment_id] = {"distance": 0.0, "gear": 0, "power": 0}
+            
+            if value is not None:
+                bike_data[equipment_id][field] = value
+    
+    return bike_data
+
+# Flask server for video streaming
+app = Flask(__name__)
+
+def pygame_to_frame(surface):
+    frame = pygame.surfarray.array3d(surface)
+    frame = np.rot90(frame)
+    frame = np.flip(frame, axis=1)
+    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    return frame
+
+def generate_frames():
+    while True:
+        frame = pygame_to_frame(screen)
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)
+
+pygame.quit()

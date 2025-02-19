@@ -11,15 +11,16 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 from bleak import BleakScanner
-from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Improved BLE Parser
+from backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast
+from contextlib import asynccontextmanager
 
 
 # ✅ Load environment variables
 load_dotenv()
-TIMESCALE_HOST = os.getenv("TIMESCALE_HOST", "localhost")
+TIMESCALE_HOST = os.getenv("TIMESCALE_HOST", "timescaledb")
 TIMESCALE_DB = os.getenv("TIMESCALE_DB", "cycleroom")
 TIMESCALE_USER = os.getenv("TIMESCALE_USER", "postgres")
-TIMESCALE_PASSWORD = os.getenv("TIMESCALE_PASSWORD", "password")
+TIMESCALE_PASSWORD = os.getenv("TIMESCALE_PASSWORD", "GlenCookTech78")
 TIMESCALE_PORT = os.getenv("TIMESCALE_PORT", "5432")
 
 # ✅ InfluxDB Configuration
@@ -27,6 +28,7 @@ INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
 INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "your-bucket")
+
 # ✅ Grafana API Configuration
 
 GRAFANA_URL = os.getenv("GRAFANA_URL", "http://localhost:3000/api/annotations")
@@ -38,6 +40,9 @@ active_connections = {}
 
 # ✅ Connect to TimescaleDB
 def get_db_connection():
+
+    print(f"✅ Connecting to  {TIMESCALE_DB} on using {TIMESCALE_USER} and password {TIMESCALE_PASSWORD}")
+
     conn = psycopg2.connect(
         host=TIMESCALE_HOST,
         database=TIMESCALE_DB,
@@ -48,33 +53,6 @@ def get_db_connection():
     conn.autocommit = True  # Force commit to database
     return conn
 
-# ✅ Initialize FastAPI
-app = FastAPI()
-
-# ✅ Configure CORS to allow WebSocket connections from Grafana
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ✅ WebSocket Endpoint for Real-Time Streaming per Equipment
-@app.websocket("/ws/{equipment_id}")
-async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
-    await websocket.accept()
-    if equipment_id not in active_connections:
-        active_connections[equipment_id] = set()
-    active_connections[equipment_id].add(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        if equipment_id in active_connections and websocket in active_connections[equipment_id]:
-            active_connections[equipment_id].remove(websocket)
-            if not active_connections[equipment_id]:  # Cleanup empty connection lists
-                del active_connections[equipment_id]
 
 # ✅ Broadcast updates to WebSocket clients per Equipment
 async def broadcast_ws(data):
@@ -164,7 +142,73 @@ async def store_bike_data(data):
     except Exception as e:
         logging.error(f"🔥 Error Writing to Databases: {e}")
 
-app = FastAPI()
+
+    
+# ✅ Create the `bike_selections` Table (If Not Exists)
+def create_bike_table():
+    print(f"✅ Connecting to  {TIMESCALE_DB} on using {TIMESCALE_USER} and password {TIMESCALE_PASSWORD}")
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bike_selections (
+                    id SERIAL PRIMARY KEY,
+                    user_name TEXT NOT NULL,
+                    equipment_id INT NOT NULL,
+                    timestamp TIMESTAMPTZ DEFAULT now()
+                );
+            """)
+            conn.commit()
+
+create_bike_table()  # 🔹 Ensure table exists at startup
+
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import asyncio
+import logging
+
+# Background task reference
+ble_scanner_task = None
+
+async def continuous_ble_scanner():
+    """Continuously scans for Keiser M3 bikes and processes BLE data."""
+    from bleak import BleakScanner
+    from backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast
+
+    TARGET_PREFIX = "M3"
+
+    def detection_callback(device, advertisement_data):
+        if device.name and device.name.startswith(TARGET_PREFIX):
+            try:
+                parsed_data = KeiserM3BLEBroadcast(advertisement_data.manufacturer_data[0x0645]).to_dict()
+                asyncio.create_task(store_bike_data(parsed_data))
+            except Exception as e:
+                logging.error(f"⚠️ Error parsing BLE data from {device.name}: {e}")
+
+    scanner = BleakScanner(detection_callback)
+
+    while True:
+        logging.info("🔍 Scanning for Keiser M3 bikes...")
+        await scanner.start()
+        await asyncio.sleep(10)
+        await scanner.stop()
+        logging.info("🔍 Scan cycle completed. Restarting...")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event for managing startup and shutdown tasks."""
+    global ble_scanner_task
+    logging.info("🚀 Starting FastAPI application")
+    ble_scanner_task = asyncio.create_task(continuous_ble_scanner())  # Start BLE scanner
+    yield  # Application runs
+    if ble_scanner_task:
+        ble_scanner_task.cancel()
+        try:
+            await ble_scanner_task
+        except asyncio.CancelledError:
+            logging.info("🚦 BLE scanner task cancelled cleanly.")
+
+# ✅ Initialize FastAPI with lifespan event
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/sessions")
 async def create_session(data: dict):
@@ -183,32 +227,31 @@ async def create_session(data: dict):
     except Exception as e:
         logging.error(f"🔥 Error storing data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-# ✅ Connect to PostgreSQL
-def get_db_connection():
-    return psycopg2.connect(
-        host=TIMESCALE_HOST,
-        database=TIMESCALE_DB,
-        user=TIMESCALE_USER,
-        password=TIMESCALE_PASSWORD,
-        port=TIMESCALE_PORT
-    )
 
-# ✅ Create the `bike_selections` Table (If Not Exists)
-def create_bike_table():
-    with get_db_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS bike_selections (
-                    id SERIAL PRIMARY KEY,
-                    user_name TEXT NOT NULL,
-                    equipment_id INT NOT NULL,
-                    timestamp TIMESTAMPTZ DEFAULT now()
-                );
-            """)
-            conn.commit()
+# ✅ Configure CORS to allow WebSocket connections from Grafana
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-create_bike_table()  # 🔹 Ensure table exists at startup
+# ✅ WebSocket Endpoint for Real-Time Streaming per Equipment
+@app.websocket("/ws/{equipment_id}")
+async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
+    await websocket.accept()
+    if equipment_id not in active_connections:
+        active_connections[equipment_id] = set()
+    active_connections[equipment_id].add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        if equipment_id in active_connections and websocket in active_connections[equipment_id]:
+            active_connections[equipment_id].remove(websocket)
+            if not active_connections[equipment_id]:  # Cleanup empty connection lists
+                del active_connections[equipment_id]
 
 # ✅ Store Bike Selection
 @app.post("/update_grafana")
@@ -272,55 +315,3 @@ async def get_selections():
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-from fastapi import FastAPI
-import asyncio
-import logging
-
-app = FastAPI()
-
-# Background task reference
-ble_scanner_task = None
-
-async def continuous_ble_scanner():
-    """Continuously scans for Keiser M3 bikes and processes BLE data."""
-    from bleak import BleakScanner
-    from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # Ensure this is available
-
-    TARGET_PREFIX = "M3"
-
-    def detection_callback(device, advertisement_data):
-        if device.name and device.name.startswith(TARGET_PREFIX):
-            try:
-                parsed_data = KeiserM3BLEBroadcast(advertisement_data.manufacturer_data[0x0645]).to_dict()
-                asyncio.create_task(store_bike_data(parsed_data))
-            except Exception as e:
-                logging.error(f"⚠️ Error parsing BLE data from {device.name}: {e}")
-
-    scanner = BleakScanner(detection_callback)
-
-    while True:
-        logging.info("🔍 Scanning for Keiser M3 bikes...")
-        await scanner.start()
-        await asyncio.sleep(10)  # Scan duration (10 seconds)
-        await scanner.stop()
-        logging.info("🔍 Scan cycle completed. Restarting...")
-
-@app.on_event("startup")
-async def start_ble_scanner():
-    """ Start BLE scanner when FastAPI starts """
-    global ble_scanner_task
-    ble_scanner_task = asyncio.create_task(continuous_ble_scanner())
-    yield
-    if ble_scanner_task:
-        ble_scanner_task.cancel()
-        try:
-            await ble_scanner_task
-        except asyncio.CancelledError:
-            logging.info("🚦 BLE scanner task cancelled cleanly.")
-    
-
-# ✅ Start FastAPI Server & Background Scanner
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
