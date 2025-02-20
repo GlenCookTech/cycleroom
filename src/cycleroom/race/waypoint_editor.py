@@ -6,7 +6,7 @@ import sys
 import os
 
 # Load waypoints from file
-WAYPOINTS_FILE = "waypoints.json"
+WAYPOINTS_FILE = "./waypoints.json"
 if not os.path.exists(WAYPOINTS_FILE):
     print("❌ Waypoints file not found! Creating a new one.")
     WAYPOINTS = []
@@ -80,9 +80,9 @@ pygame.quit()
 # Function to draw waypoints
 def draw_waypoint_connections():
     try:
-        track_image = cv2.imread("race/track.jpg")
+        track_image = cv2.imread("track.jpg")
         if track_image is None:
-            raise FileNotFoundError("❌ Unable to load image at race/track.jpg")
+            raise FileNotFoundError("❌ Unable to load image at track.jpg")
         track_image = cv2.resize(track_image, (SCREEN_WIDTH, SCREEN_HEIGHT))
     except Exception as e:
         print(e)

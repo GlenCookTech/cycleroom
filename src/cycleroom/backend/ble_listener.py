@@ -1,6 +1,9 @@
 import asyncio
+import logging
+from fastapi import FastAPI
 from bleak import BleakScanner
-from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Import the improved parser
+from cycleroom.backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Import the improved parser
+
 
 # ✅ BLE Listener Settings
 TARGET_PREFIX = "M3"
@@ -34,4 +37,13 @@ async def scan_keiser_bikes(scan_duration=10):
 
 # ✅ Example usage (run only in an async environment)
 if __name__ == "__main__":
-    asyncio.run(scan_keiser_bikes())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.info("🚀 Starting FastAPI application")
+    scanner_task = asyncio.create_task(continuous_ble_scanner())
+    yield
+    scanner_task.cancel()
+    try:
+        await scanner_task
+    except asyncio.CancelledError:
+        logging.info("🚦 BLE scanner task cancelled cleanly.")

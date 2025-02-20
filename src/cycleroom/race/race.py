@@ -4,15 +4,18 @@ import json
 import cv2
 import numpy as np
 import math
+import threading
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient
 from flask import Flask, Response
+import time
+
 
 # Initialize Pygame
 pygame.init()
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path="config/.env")
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
@@ -30,14 +33,14 @@ pygame.display.set_caption("Bike Race Visualization")
 
 # Load the track image
 try:
-    TRACK_IMAGE = pygame.image.load("race/track.jpg")
+    TRACK_IMAGE = pygame.image.load("src/cycleroom/race/track.jpg")
     TRACK_IMAGE = pygame.transform.scale(TRACK_IMAGE, (TRACK_WIDTH, SCREEN_HEIGHT))
 except pygame.error as e:
     print(f"❌ Error loading track image: {e}")
     TRACK_IMAGE = None
 
 # Load waypoints
-WAYPOINTS_FILE = "race/waypoints.json"
+WAYPOINTS_FILE = "src/cycleroom/race/waypoints.json"
 try:
     with open(WAYPOINTS_FILE, "r") as f:
         WAYPOINTS = [(x, y) for x, y in json.load(f)]
@@ -47,12 +50,16 @@ except FileNotFoundError:
     WAYPOINTS = []
 
 # Load bike icon
-BIKE_ICON = pygame.image.load("race/bike_icon.png")
-BIKE_ICON = pygame.transform.scale(BIKE_ICON, (20, 10))
+try:
+    BIKE_ICON = pygame.image.load("src/cycleroom/race/bike_icon.png")
+    BIKE_ICON = pygame.transform.scale(BIKE_ICON, (20, 10))
+except pygame.error as e:
+    print(f"❌ Error loading bike icon: {e}")
+    BIKE_ICON = None
 
 # Colors
 BIKE_COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 165, 0)]
-FONT = pygame.font.Font(None, 24)
+FONT = pygame.font.Font(None, 36)  # Increased font size
 
 # Get bike position based on distance
 def get_bike_position(distance_miles):
@@ -66,7 +73,18 @@ def get_bike_position(distance_miles):
     if index < 0 or index >= len(WAYPOINTS):
         return (0, 0)
 
-    return WAYPOINTS[index]
+    # Get the waypoint coordinates
+    x, y = WAYPOINTS[index]
+
+    # Adjust the bike position to fit the screen and align with the track image
+    x = int(200 + (x * (TRACK_WIDTH / 1000)))
+    y = int(y * (SCREEN_HEIGHT / 500))
+    
+    # Debugging: Print the calculated positions
+    print(f"Bike Position - X: {x}, Y: {y}")
+
+    return (x, y)
+
 
 # Fetch race data (distance, gear, power)
 def get_race_data():
@@ -100,24 +118,70 @@ app = Flask(__name__)
 
 def pygame_to_frame(surface):
     frame = pygame.surfarray.array3d(surface)
-    frame = np.rot90(frame)
-    frame = np.flip(frame, axis=1)
+    frame = np.transpose(frame, (1, 0, 2))
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     return frame
 
 def generate_frames():
     while True:
         frame = pygame_to_frame(screen)
-        _, buffer = cv2.imencode('.jpg', frame)
+        _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         frame_bytes = buffer.tobytes()
+        
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        # Add a short delay to control the frame rate
+        time.sleep(0.03)  # Approximately 30 FPS
 
 @app.route('/video_feed')
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-if __name__ == "__main__":
+# Start Flask in a separate thread
+def start_flask():
     app.run(host="0.0.0.0", port=5000, debug=False)
+
+flask_thread = threading.Thread(target=start_flask, daemon=True)
+flask_thread.start()
+
+# Game Loop
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    # Clear screen
+    screen.fill((0, 0, 0))  # Fill screen with black
+    
+    # Draw track
+    if TRACK_IMAGE:
+        screen.blit(TRACK_IMAGE, (200, 0))
+    
+    # Draw waypoints
+    for point in WAYPOINTS:
+        pygame.draw.circle(screen, (255, 255, 255), point, 3)
+    
+     # Draw bikes
+    bike_data = get_race_data()
+    for i, (bike_id, data) in enumerate(bike_data.items()):
+        pos = get_bike_position(data["distance"])
+        color = BIKE_COLORS[i % len(BIKE_COLORS)]
+        
+        # Check if the position is valid before drawing
+        if pos != (0, 0) and pos[0] > 0 and pos[1] > 0:
+            # Draw bike as a colored circle if no icon is available
+            pygame.draw.circle(screen, color, pos, 10)
+            
+            # Display bike information with bigger and black font
+            text = FONT.render(f"{bike_id} - Gear: {data['gear']} Power: {data['power']}", True, (0, 0, 0))
+            screen.blit(text, (pos[0] + 20, pos[1] - 20))
+        else:
+            print(f"Invalid position for {bike_id}: {pos}")
+
+    
+    # Update display
+    pygame.display.flip()
 
 pygame.quit()
