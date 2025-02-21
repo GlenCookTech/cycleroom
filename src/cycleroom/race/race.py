@@ -15,7 +15,7 @@ import time
 pygame.init()
 
 # Load environment variables
-load_dotenv(dotenv_path="config/.env")
+load_dotenv(dotenv_path="/config/.env")
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
@@ -33,14 +33,14 @@ pygame.display.set_caption("Bike Race Visualization")
 
 # Load the track image
 try:
-    TRACK_IMAGE = pygame.image.load("src/cycleroom/race/track.jpg")
+    TRACK_IMAGE = pygame.image.load("race/track.jpg")
     TRACK_IMAGE = pygame.transform.scale(TRACK_IMAGE, (TRACK_WIDTH, SCREEN_HEIGHT))
 except pygame.error as e:
     print(f"❌ Error loading track image: {e}")
     TRACK_IMAGE = None
 
 # Load waypoints
-WAYPOINTS_FILE = "src/cycleroom/race/waypoints.json"
+WAYPOINTS_FILE = "race/waypoints.json"
 try:
     with open(WAYPOINTS_FILE, "r") as f:
         WAYPOINTS = [(x, y) for x, y in json.load(f)]
@@ -51,7 +51,7 @@ except FileNotFoundError:
 
 # Load bike icon
 try:
-    BIKE_ICON = pygame.image.load("src/cycleroom/race/bike_icon.png")
+    BIKE_ICON = pygame.image.load("race/bike_icon.png")
     BIKE_ICON = pygame.transform.scale(BIKE_ICON, (20, 10))
 except pygame.error as e:
     print(f"❌ Error loading bike icon: {e}")

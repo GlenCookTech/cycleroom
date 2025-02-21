@@ -9,7 +9,7 @@ import multiprocessing
 def start_server():
     """Starts the FastAPI server."""
     print("🚀 Starting Cycleroom FastAPI server...")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("backend:server:app", host="0.0.0.0", port=8000, reload=True)
 
 def start_race():
     """Starts the Race Dashboard."""
@@ -19,7 +19,7 @@ def start_race():
 def start_blescanner():
     """Starts the BLE Scanner."""
     print("🚀🚦 Starting the BLE Scanner")
-    cycleroom.backend.scan_keiser_bikes()
+    cycleroom.backend.keiser_m3_ble_parser.scan_keiser_bikes()
 
 if __name__ == "__main__":
     server_process = multiprocessing.Process(target=start_server)
