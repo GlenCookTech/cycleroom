@@ -14,10 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from bleak import BleakScanner
 
-from cycleroom.backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast  # Ensure correct import path
+from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # Ensure correct import path
 
 # ✅ Load environment variables
-load_dotenv(dotenv_path="config/.env")
 TIMESCALE_HOST = os.getenv("TIMESCALE_HOST", "timescaledb")
 TIMESCALE_DB = os.getenv("TIMESCALE_DB", "cycleroom")
 TIMESCALE_USER = os.getenv("TIMESCALE_USER", "postgres")
@@ -128,12 +127,8 @@ app.add_middleware(
 @app.websocket("/ws/{equipment_id}")
 async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
     await websocket.accept()
-    active_connections.setdefault(equipment_id, set()).add(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        active_connections[equipment_id].remove(websocket)
+    active_connections.setdload_dotenv(dotenv_path="config/.env")
+equipment_id].remove(websocket)
         if not active_connections[equipment_id]:
             del active_connections[equipment_id]
 

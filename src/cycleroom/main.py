@@ -5,7 +5,17 @@ Starts the FastAPI server from server.py.
 
 import uvicorn
 import multiprocessing
+from dotenv import load_dotenv
+import os
 
+# Load environment variables
+load_dotenv(dotenv_path="config/.env")
+
+# Debug: Print InfluxDB variables
+influx_vars = ["INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"]
+for var in influx_vars:
+    print(f"{var}: {os.environ.get(var, 'Not Set')}")
+    
 def start_server():
     """Starts the FastAPI server."""
     print("🚀 Starting Cycleroom FastAPI server...")
