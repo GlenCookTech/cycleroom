@@ -47,7 +47,7 @@ def get_db_connection():
         )
         conn.autocommit = True
         return conn
-    except Exception as e:
+    except psycopg2.OperationalError as e:
         logging.error(f"❌ Database connection error: {e}")
         return None
 
@@ -107,7 +107,7 @@ async def store_bike_data(data):
                 .time(timestamp, WritePrecision.NS)
             write_api.write(bucket=INFLUXDB_BUCKET, record=point)
 
-    except Exception as e:
+    except psycopg2.OperationalError as e:
         logging.error(f"🔥 Error Writing to Databases: {e}")
 
 # ✅ FastAPI Setup

@@ -29,7 +29,7 @@ try:
     TRACK_IMAGE = pygame.image.load("assets/track.jpg")
     TRACK_IMAGE = pygame.transform.scale(TRACK_IMAGE, (TRACK_WIDTH, SCREEN_HEIGHT))
 except pygame.error as e:
-    print(f"❌ Error loading track image: {e}")
+    logger.info(f"❌ Error loading track image: {e}")
     TRACK_IMAGE = None
 
 # Load waypoints
@@ -37,9 +37,9 @@ WAYPOINTS_FILE = "assets/waypoints.json"
 try:
     with open(WAYPOINTS_FILE, "r") as f:
         WAYPOINTS = [(x, y) for x, y in json.load(f)]
-    print(f"✅ Loaded {len(WAYPOINTS)} waypoints.")
+    logger.info(f"✅ Loaded {len(WAYPOINTS)} waypoints.")
 except FileNotFoundError:
-    print("❌ Waypoints file not found!")
+    logger.info("❌ Waypoints file not found!")
     WAYPOINTS = []
 
 # Load bike icon
@@ -47,7 +47,7 @@ try:
     BIKE_ICON = pygame.image.load("assets/bike_icon.png")
     BIKE_ICON = pygame.transform.scale(BIKE_ICON, (20, 10))
 except pygame.error as e:
-    print(f"❌ Error loading bike icon: {e}")
+    logger.info(f"❌ Error loading bike icon: {e}")
     BIKE_ICON = None
 
 # Colors
@@ -74,7 +74,7 @@ def get_bike_position(distance_miles):
     y = int(y * (SCREEN_HEIGHT / 500))
     
     # Debugging: Print the calculated positions
-    print(f"Bike Position - X: {x}, Y: {y}")
+    logger.info(f"Bike Position - X: {x}, Y: {y}")
 
     return (x, y)
 
@@ -166,7 +166,7 @@ while running:
             text = FONT.render(f"{bike_id} - Gear: {data['gear']} Power: {data['power']}", True, (0, 0, 0))
             screen.blit(text, (pos[0] + 20, pos[1] - 20))
         else:
-            print(f"Invalid position for {bike_id}: {pos}")
+            logger.info(f"Invalid position for {bike_id}: {pos}")
 
     
     # Update display

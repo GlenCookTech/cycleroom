@@ -23,7 +23,7 @@ class KeiserM3BLEBroadcast:
         temp_distance = None
 
         for index, byte in enumerate(manufacture_data):
-            if index == 0:
+            self.build_major, self.build_minor, self.data_type = struct.unpack(">BBB", manufacture_data[:3])
                 self.build_major = byte
             elif index == 1:
                 self.build_minor = byte

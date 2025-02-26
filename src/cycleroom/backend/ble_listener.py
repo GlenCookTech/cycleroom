@@ -16,15 +16,15 @@ async def scan_keiser_bikes(scan_duration=10):
                 parsed_data = KeiserM3BLEBroadcast(advertisement_data.manufacturer_data[0x0645]).to_dict()
                 if parsed_data:
                     found_bikes[device.address] = parsed_data
-                    print(f"✅ Found Keiser Bike {device.name} ({device.address}) → {parsed_data}")
-            except Exception as e:
-                print(f"⚠️ Error parsing BLE data from {device.name}: {e}")
+                    logger.info(f"✅ Found Keiser Bike {device.name} ({device.address}) → {parsed_data}")
+            except KeyError as e:
+                logger.info(f"⚠️ Error parsing BLE data from {device.name}: {e}")
     scanner = BleakScanner(detection_callback)
-    print("🔍 Starting BLE scan...")
+    logger.info("🔍 Starting BLE scan...")
     await scanner.start()
     await asyncio.sleep(scan_duration)
     await scanner.stop()
-    print(f"🔍 Scan complete. Found {len(found_bikes)} bikes.")
+    logger.info(f"🔍 Scan complete. Found {len(found_bikes)} bikes.")
     return found_bikes
 
 # Define a continuous scanner that repeatedly scans

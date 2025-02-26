@@ -16,4 +16,4 @@ with open(csv_file_path, mode='r', encoding='utf-8') as csv_file:
 with open(json_file_path, mode='w', encoding='utf-8') as json_file:
     json.dump(data, json_file, indent=4)
 
-print(f"Data from {csv_file_path} has been converted to JSON and saved to {json_file_path}")
+logger.info(f"Data from {csv_file_path} has been converted to JSON and saved to {json_file_path}")

@@ -11,10 +11,10 @@ def pretty_print_json(json_file):
         formatted_json = json.dumps(json_content, indent=4, sort_keys=True)
 
         # Output formatted JSON
-        print(formatted_json)
+        logger.info(formatted_json)
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.info(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Format and pretty-print a JSON file.")
