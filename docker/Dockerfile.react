@@ -1,15 +1,17 @@
-
 # Use Node.js base image for React app
 FROM node:18
 
 # Set working directory
 WORKDIR /app
 
-# Copy React app code
-COPY ./src/cycleroom/bike_selection /app
+# Copy package.json and package-lock.json
+COPY ./src/cycleroom/bike_selection/package.json /app/
 
-# Create package.json and Install Dependencies
-RUN echo '{ "name": "bike-selection", "version": "1.0.0", "private": true, "dependencies": { "axios": "^1.2.0", "react": "^18.0.0", "react-dom": "^18.0.0", "tailwindcss": "^3.0.0", "postcss": "^8.0.0", "autoprefixer": "^10.0.0" } }' > package.json &&     npm install &&     npx tailwindcss init -p
+# Install dependencies using npm ci for consistent builds
+RUN npm install
+
+# Copy the rest of the application code
+COPY ./src/cycleroom/bike_selection /app
 
 # Install serve globally for production build
 RUN npm install -g serve

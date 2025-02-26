@@ -1,4 +1,3 @@
-
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.query_api import QueryApi
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -6,6 +5,7 @@ from influxdb_client.client.exceptions import InfluxDBError
 from config.config import INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET
 import logging
 import asyncpg
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -52,4 +52,45 @@ async def get_bike_mappings() -> list:
         return [dict(row) for row in rows]
     except Exception as e:
         logger.error(f"❌ Error retrieving bike mappings: {e}")
+        return []
+
+# Get Latest Bike Data from InfluxDB
+def get_latest_bike_data():
+    try:
+        query = f'''
+            from(bucket: "{INFLUXDB_BUCKET}")
+            |> range(start: -5m)
+            |> filter(fn: (r) => r._measurement == "bike_data")
+            |> last()
+        '''
+        result = query_api.query(org=INFLUXDB_ORG, query=query)
+        latest_data = {}
+        for table in result:
+            for record in table.records:
+                bike_id = record.values["bike_id"]
+                latest_data[bike_id] = {
+                    "distance": record.get_value()
+                }
+        logger.info("✅ Successfully fetched latest bike data from InfluxDB.")
+        return latest_data
+    except InfluxDBError as e:
+        logger.error(f"❌ Error fetching latest bike data: {e}")
+        return {}
+
+# Get Historical Bike Data from TimescaleDB
+async def get_historical_data(bike_id: str, start_time: datetime, end_time: datetime) -> list:
+    try:
+        conn = await get_timescale_connection()
+        query = '''
+            SELECT * FROM bike_data
+            WHERE bike_id = $1
+            AND timestamp >= $2
+            AND timestamp <= $3
+            ORDER BY timestamp ASC
+        '''
+        rows = await conn.fetch(query, bike_id, start_time, end_time)
+        await conn.close()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"❌ Error fetching historical bike data: {e}")
         return []
