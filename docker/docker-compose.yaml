@@ -16,11 +16,31 @@ services:
       - TIMESCALEDB_HOST=timescaledb
       - QUERY_INTERVAL=2
 
-  visualization:
+  ble-scanner:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.visualization
-    container_name: visualization
+      dockerfile: docker/Dockerfile.ble_scanner
+    container_name: ble-scanner
+    privileged: true
+    devices:
+      - "/dev/bus/usb:/dev/bus/usb"
+    volumes:
+      - /var/run/dbus:/var/run/dbus
+    environment:
+      - TARGET_PREFIX=M3
+      - FASTAPI_URL=http://fastapi-app:8000/api/bikes
+    depends_on:
+      - fastapi-app
+    networks:
+      - cycleroom-network
+
+  bike-selection:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.react
+    container_name: bike-selection
+    ports:
+      - "3000:3000"
     depends_on:
       - fastapi-app
     networks:
@@ -33,14 +53,6 @@ services:
       - "8086:8086"
     networks:
       - cycleroom-network
-    volumes:
-      - influxdb-data:/var/lib/influxdb
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
-      - DOCKER_INFLUXDB_INIT_ORG=cycleroom
-      - DOCKER_INFLUXDB_INIT_BUCKET=metrics
 
   timescaledb:
     image: timescale/timescaledb:latest-pg14
@@ -61,5 +73,4 @@ networks:
     driver: bridge
 
 volumes:
-  influxdb-data:
   timescale-data:
