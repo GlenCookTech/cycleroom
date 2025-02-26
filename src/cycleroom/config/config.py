@@ -1,19 +1,24 @@
-from dotenv import load_dotenv
+
 import os
+from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
+# Load environment variables from .env file
+load_dotenv()
 
-INFLUXDB_URL = os.getenv('INFLUXDB_URL')
-INFLUXDB_TOKEN = os.getenv('INFLUXDB_TOKEN')
-INFLUXDB_ORG = os.getenv('INFLUXDB_ORG')
-INFLUXDB_BUCKET = os.getenv('INFLUXDB_BUCKET')
+# InfluxDB Configuration
+INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "default_token")
+INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "default_org")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "default_bucket")
+QUERY_INTERVAL = int(os.getenv("QUERY_INTERVAL", 2))
 
-TIMESCALE_HOST = os.getenv("TIMESCALE_HOST")
-TIMESCALE_DB = os.getenv("TIMESCALE_DB")
-TIMESCALE_USER = os.getenv("TIMESCALE_USER")
-TIMESCALE_PASSWORD = os.getenv("TIMESCALE_PASSWORD")
-TIMESCALE_PORT = os.getenv("TIMESCALE_PORT")
+# Pygame and Visualization Configuration
+SCREEN_WIDTH = int(os.getenv("SCREEN_WIDTH", 1200))
+SCREEN_HEIGHT = int(os.getenv("SCREEN_HEIGHT", 600))
+TRACK_WIDTH = int(os.getenv("TRACK_WIDTH", 800))
+TRACK_LENGTH_MILES = float(os.getenv("TRACK_LENGTH_MILES", 3.0))
 
-
-GRAFANA_URL = os.getenv("GRAFANA_URL", "http://localhost:3000/api/annotations")
-GRAFANA_API_KEY = os.getenv("GRAFANA_API_KEY", "your-api-key")
+# Asset Paths
+WAYPOINTS_FILE = os.getenv("WAYPOINTS_FILE", "assets/waypoints.json")
+BIKE_ICON_PATH = os.getenv("BIKE_ICON_PATH", "assets/bike_icon.png")
+TRACK_IMAGE_PATH = os.getenv("TRACK_IMAGE_PATH", "assets/track.jpg")

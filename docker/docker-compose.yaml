@@ -1,62 +1,65 @@
 
-services: 
-  backend:
+version: '3.8'
+
+services:
+  fastapi-app:
     build:
-      context: ./backend  # Path to the build context (where Dockerfile is located)
-      dockerfile: Dockerfile            # Name of the Dockerfile
-    image: cycleroom_backend
+      context: ..
+      dockerfile: docker/Dockerfile.fastapi
+    container_name: fastapi-app
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env
-    depends_on:
-      - influxdb
-    volumes:
-      - ./backend:/app
-      - /run/dbus:/run/dbus:ro
     networks:
-      - cycleroom_network
-    privileged: true
-
-  timescaledb:
-    image: timescale/timescaledb:latest-pg17
+      - cycleroom-network
     environment:
-      - POSTGRES_PASSWORD=GlenCookTech
-    ports:
-      - "5432:5432"
+      - INFLUXDB_URL=http://influxdb:8086
+      - TIMESCALEDB_HOST=timescaledb
+      - QUERY_INTERVAL=2
+
+  visualization:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.visualization
+    container_name: visualization
+    depends_on:
+      - fastapi-app
     networks:
-      - cycleroom_network
-    volumes:
-      - timescaledb_data:/var/lib/postgresql/data
+      - cycleroom-network
 
   influxdb:
-    image: influxdb:2.7
+    image: influxdb:2.0
+    container_name: influxdb
     ports:
       - "8086:8086"
     networks:
-      - cycleroom_network
+      - cycleroom-network
     volumes:
-      - influxdb_data:/var/lib/influxdb2
-      - influxdb_config:/etc/influxdb2
-    env_file:
-      - .env 
-  grafana:
-    image: grafana/grafana-enterprise
-    container_name: grafana
-    restart: unless-stopped
+      - influxdb-data:/var/lib/influxdb
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=cycleroom
+      - DOCKER_INFLUXDB_INIT_BUCKET=metrics
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
     ports:
-     - '3000:3000'
+      - "5432:5432"
     networks:
-      - cycleroom_network
+      - cycleroom-network
+    environment:
+      - POSTGRES_USER=timescale_user
+      - POSTGRES_PASSWORD=timescale_password
+      - POSTGRES_DB=timescale_db
     volumes:
-      - grafana_data:/var/lib/grafana
+      - timescale-data:/var/lib/postgresql/data
 
 networks:
-  cycleroom_network:
+  cycleroom-network:
+    driver: bridge
 
 volumes:
-  influxdb_data:
-  influxdb_config:
-  grafana_data:
-  timescaledb_data:
-  
+  influxdb-data:
+  timescale-data:

@@ -1,0 +1,21 @@
+
+# Use the official Python base image with X virtual framebuffer
+FROM python:3.11-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Install dependencies for Pygame and headless rendering
+RUN apt-get update && apt-get install -y     xvfb     libsdl2-dev     libsdl2-image-dev     libsdl2-mixer-dev     libsdl2-ttf-dev     libportmidi-dev     libswscale-dev     libavformat-dev     libavcodec-dev     python3-dev     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy the application code
+COPY ./src/cycleroom /app
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip &&     pip install --no-cache-dir -r requirements.txt
+
+# Expose a port for visualization (if using WebSocket or VNC)
+EXPOSE 8080
+
+# Run the visualization with headless rendering
+CMD ["xvfb-run", "python", "race/race.py"]
