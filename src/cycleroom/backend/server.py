@@ -7,14 +7,13 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 import psycopg2
-import requests
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+# import requests
+# from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from influxdb_client import InfluxDBClient, Point, WritePrecision
-from bleak import BleakScanner
 
-from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # Ensure correct import path
+# from keiser_m3_ble_parser import KeiserM3BLEBroadcast  # Ensure correct import path
 
 # ✅ Load environment variables
 TIMESCALE_HOST = os.getenv("TIMESCALE_HOST", "timescaledb")
@@ -72,7 +71,7 @@ async def broadcast_ws(data):
 async def store_bike_data(data):
     """Stores bike data in TimescaleDB & InfluxDB."""
     try:
-        timestamp = data.get("timestamp", datetime.utcnow().replace(tzinfo=timezone.utc).isoformat())
+        timestamp = data.get("timestamp", datetime.now(timezone.utc).isoformat())
         equipment_id = str(data.get("equipment_id", "unknown"))
         power = int(data.get("power", 0))
         cadence = float(data.get("cadence", 0))
@@ -127,8 +126,14 @@ app.add_middleware(
 @app.websocket("/ws/{equipment_id}")
 async def websocket_endpoint(websocket: WebSocket, equipment_id: str):
     await websocket.accept()
-    active_connections.setdload_dotenv(dotenv_path="config/.env")
-equipment_id].remove(websocket)
+    if equipment_id not in active_connections:
+        active_connections[equipment_id] = []
+    active_connections[equipment_id].append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        active_connections[equipment_id].remove(websocket)
         if not active_connections[equipment_id]:
             del active_connections[equipment_id]
 
@@ -140,23 +145,7 @@ async def create_session(data: dict):
         raise HTTPException(status_code=400, detail="No data received")
     asyncio.create_task(store_bike_data(data))
     return {"message": "Session saved successfully", "data": data}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
-
-# ✅ Start the BLE Scanner on App Startup
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logging.info("🚀 Starting FastAPI application")
-    scanner_task = asyncio.create_task(continuous_ble_scanner())
-    yield
-    scanner_task.cancel()
-    try:
-        await scanner_task
-    except asyncio.CancelledError:
-        logging.info("🚦 BLE scanner task cancelled cleanly.")
-
+ 
 # ✅ Run Server
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

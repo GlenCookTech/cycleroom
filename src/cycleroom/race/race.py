@@ -14,12 +14,6 @@ import time
 # Initialize Pygame
 pygame.init()
 
-# Load environment variables
-INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
-INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "your-token")
-INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "your-org")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "keiser_data")
-
 # Init InfluxDB
 client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
 query_api = client.query_api()
@@ -137,12 +131,7 @@ def generate_frames():
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# Start Flask in a separate thread
-def start_flask():
-    app.run(host="0.0.0.0", port=5000, debug=False)
 
-flask_thread = threading.Thread(target=start_flask, daemon=True)
-flask_thread.start()
 
 # Game Loop
 running = True

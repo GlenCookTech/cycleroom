@@ -1,16 +1,17 @@
 import json
 import requests
 import time
-from src.cycleroom.backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Import the new parser
+from cycleroom.backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Import the new parser
 
 # Load JSON data from file
-json_file = "src/cycleroom/utils/filtered_output.json"
+json_file = "filtered_output.json"
 
 with open(json_file, "r") as file:
     data = json.load(file)
 
 # Extract Bluetooth data
-bluetooth_records = [entry for entry in data if entry["sensor"] == "Bluetooth"]
+#bluetooth_records = [entry for entry in data if entry["sensor"] == "Bluetooth"]
+bluetooth_records = [entry for entry in data]  # ✅ Use lowercase for comparison
 
 # Sort records by time (to ensure correct scheduling)
 bluetooth_records.sort(key=lambda x: float(x["seconds_elapsed"]))

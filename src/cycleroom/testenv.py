@@ -1,6 +1,13 @@
 from dotenv import load_dotenv
 import os
 
-load_dotenv(dotenv_path="cycleroom/config/.env")
+# Get absolute path to the .env file
+dotenv_path = os.path.abspath("config/.env")
 
-print(os.environ.get("INFLUXDB_URL"))  # Should print the expected value
+# Load environment variables
+dotenv_loaded = load_dotenv(dotenv_path=dotenv_path)
+
+print(f"otenv_path: {dotenv_path}")
+
+print(f".env loaded: {dotenv_loaded}")
+print(f"INFLUXDB_URL: {os.environ.get('INFLUXDB_URL', 'Not Set')}")

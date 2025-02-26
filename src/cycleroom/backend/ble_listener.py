@@ -1,17 +1,15 @@
 import asyncio
 import logging
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from bleak import BleakScanner
-from cycleroom.backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast  # ✅ Import the improved parser
+from cycleroom.backend.keiser_m3_ble_parser import KeiserM3BLEBroadcast
 
-
-# ✅ BLE Listener Settings
 TARGET_PREFIX = "M3"
 
 async def scan_keiser_bikes(scan_duration=10):
-    """Scan for Keiser M3 bikes and parse BLE advertisement data."""
+    # (Same scanning code as before)
     found_bikes = {}
-
     def detection_callback(device, advertisement_data):
         if device.name and device.name.startswith(TARGET_PREFIX):
             try:
@@ -21,22 +19,20 @@ async def scan_keiser_bikes(scan_duration=10):
                     print(f"✅ Found Keiser Bike {device.name} ({device.address}) → {parsed_data}")
             except Exception as e:
                 print(f"⚠️ Error parsing BLE data from {device.name}: {e}")
-
     scanner = BleakScanner(detection_callback)
-    
     print("🔍 Starting BLE scan...")
     await scanner.start()
-    await asyncio.sleep(scan_duration)  # ✅ Scan for 10 seconds instead of 5
+    await asyncio.sleep(scan_duration)
     await scanner.stop()
     print(f"🔍 Scan complete. Found {len(found_bikes)} bikes.")
-
-    if not found_bikes:
-        print("⚠️ No Keiser bikes found. Ensure they are powered on and broadcasting.")
-
     return found_bikes
 
-# ✅ Example usage (run only in an async environment)
-if __name__ == "__main__":
+# Define a continuous scanner that repeatedly scans
+async def continuous_ble_scanner():
+    while True:
+        await scan_keiser_bikes()
+        await asyncio.sleep(5)  # wait 5 seconds before next scan
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.info("🚀 Starting FastAPI application")
@@ -47,3 +43,9 @@ async def lifespan(app: FastAPI):
         await scanner_task
     except asyncio.CancelledError:
         logging.info("🚦 BLE scanner task cancelled cleanly.")
+
+app = FastAPI(lifespan=lifespan)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("ble_listener:app", host="127.0.0.1", port=8002, reload=True)

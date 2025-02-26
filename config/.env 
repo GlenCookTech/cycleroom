@@ -1,13 +1,12 @@
-INFLUXDB_URL=http://influx.glencook.tech:8086
+INFLUXDB_URL=http://influxdb:8086
 INFLUXDB_TOKEN="YTQkHy8TFFI99jvy6SZKVCCTfVRDEb6DqZR11z5dm9-q1tQLJREeT4JQ4iCPJB0ZftxnI0Mh_KELoQspehCSiw=="
 INFLUXDB_ORG=GlenCookTech
 INFLUXDB_BUCKET=keiser_data
 
-TIMESCALE_HOST=timescaledd
+TIMESCALE_HOST=timescaledb
 TIMESCALE_PORT=5432
 TIMESCALE_USER=postgres
-TIMESCALE_PASSWORD=GlenCokTech
+TIMESCALE_PASSWORD=GlenCookTech
 TIMESCALE_DB=keiser_data
 
-PYTHONPATH=${workspaceFolder}/src
-
+PYTHONPATH=/home/glen/github/cycleroom/src
