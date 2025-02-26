@@ -9,4 +9,5 @@ TIMESCALE_USER=postgres
 TIMESCALE_PASSWORD=GlenCokTech
 TIMESCALE_DB=keiser_data
 
-PYTHONPATH=src/cycleroom
+PYTHONPATH=${workspaceFolder}/src
+
